@@ -23,6 +23,11 @@ app = Flask(__name__)
 CORS(app)  # Permite solicitudes desde cualquier origen
 
 num = 0
+
+@app.route('/auth/signOut', methods=['POST'])
+def auth_sign_out():
+    response = supabase.auth.sign_out()
+
 @app.route('/auth/login', methods=['POST'])
 def auth_login():
     data = request.get_json()
@@ -84,7 +89,6 @@ def handel():
     usuario = verificar_token(token)
     if not usuario:
         return jsonify({'Error': "Usuario no autenticado"}), 401
-    
     global num
     num = num + 1
     data = request.get_json()
