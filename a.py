@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 import boto3
 import io 
+from datetime import datetime
 
 load_dotenv()
 api_key = os.getenv('API_KEY')
@@ -31,6 +32,7 @@ def auth_sign_out():
 @app.route('/auth/login', methods=['POST'])
 def auth_login():
     data = request.get_json()
+    print(data)
     email = data.get('email','')
     password = data.get('password','')
 
@@ -89,8 +91,7 @@ def handel():
     usuario = verificar_token(token)
     if not usuario:
         return jsonify({'Error': "Usuario no autenticado"}), 401
-    global num
-    num = num + 1
+
     data = request.get_json()
     texto = data.get('text', '')
     
@@ -106,9 +107,21 @@ def handel():
         if not respuesta_polly:
             raise ValueError("Error generando el audio con Amazon Polly")
 
-        respuesta_bucket_supabase = handel_bucket_supabase(respuesta_polly, num)
+        respuesta_bucket_supabase = handel_bucket_supabase(respuesta_polly, usuario)
         if not respuesta_bucket_supabase:
             raise ValueError("Error subiendo el audio al bucket de Supabase")
+        now = datetime.now()
+        time_create = now.strftime("%Y%m%d-%H%M%S")
+        response = (
+            supabase.table("messenge")    
+            .insert({"message_text": respuesta_geminai,
+                    "audio_link":respuesta_bucket_supabase,
+                    "message_time":time_create,
+                    "user_id":usuario.user.id,})
+            .execute()
+        )
+        if not response:
+            raise ValueError("Error no se pudo registrar el dato")
 
         return jsonify({
             'Respuesta_Geminai': respuesta_geminai,
@@ -118,6 +131,36 @@ def handel():
     except Exception as e:
         return jsonify({'Error': str(e)}), 500
     
+@app.route('/historial', methods=['GET'])
+def get_historial():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'Error': "No se proporcionó un token válido"}), 401
+
+    token = auth_header.split(" ")[1]
+    usuario = verificar_token(token)
+    if not usuario:
+        return jsonify({'Error': "Usuario no autenticado"}), 401
+    
+    try:
+        response = (
+            supabase.table("messenge")
+            .select("id", "message_text", "audio_link", "image_link", "message_time")
+            .eq("user_id", usuario.user.id)
+            .execute()
+        )
+        
+        if not response.data:
+            return jsonify({'Error': "No hay datos disponibles en la consulta"}), 404
+
+
+        return jsonify({
+            'Respuesta': response.data,
+        }), 200
+
+    except Exception as e:
+        return jsonify({'Error': str(e)}), 500
+
 def handel_text(texto):
     response = model.generate_content(f"del siguiente texto califica la escritura, la gramatica y el sentido del mismo texto {texto}")
     return response.text
@@ -134,13 +177,16 @@ def handel_audio(texto):
         return audio_stream
     return None 
         
-def handel_bucket_supabase(AudioStream,num):
+def handel_bucket_supabase(AudioStream,user):
     audio_content = AudioStream.getvalue()
+    now = datetime.now()
+    time_create = now.strftime("%Y%m%d-%H%M%S")
+
     upload_response = supabase.storage.from_("audios").upload(
-        f"output{num}.mp3", audio_content, file_options={"content-type": "audio/mpeg"}
+        f"{user.user.id}-{time_create}.mp3", audio_content, file_options={"content-type": "audio/mpeg"}
     )
     if upload_response:
-        public_url = supabase.storage.from_("audios").get_public_url(f"output{num}.mp3")
+        public_url = supabase.storage.from_("audios").get_public_url(f"{user.user.id}-{time_create}.mp3")
         return public_url  # Retorna el enlace público
     return None
 
