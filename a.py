@@ -110,16 +110,18 @@ def handel():
         respuesta_bucket_supabase = handel_bucket_supabase(respuesta_polly, usuario)
         if not respuesta_bucket_supabase:
             raise ValueError("Error subiendo el audio al bucket de Supabase")
-        now = datetime.now()
-        time_create = now.strftime("%Y%m%d-%H%M%S")
+        now = datetime.now().isoformat()  # Usar formato ISO 8601
         response = (
-            supabase.table("messenge")    
-            .insert({"message_text": respuesta_geminai,
-                    "audio_link":respuesta_bucket_supabase,
-                    "message_time":time_create,
-                    "user_id":usuario.user.id,})
+            supabase.table("messenge")
+            .insert({
+                "message_text": respuesta_geminai,
+                "audio_link": respuesta_bucket_supabase,
+                "message_time": now,  # Aquí pasa el timestamp en el formato adecuado
+                "user_id": usuario.user.id,
+            })
             .execute()
         )
+
         if not response:
             raise ValueError("Error no se pudo registrar el dato")
 
