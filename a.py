@@ -8,6 +8,9 @@ from supabase import create_client, Client
 import boto3
 import io 
 from datetime import datetime
+import fitz
+import base64
+from io import BytesIO
 
 load_dotenv()
 api_key = os.getenv('API_KEY')
@@ -99,7 +102,7 @@ def handel():
         return jsonify({'Respuesta': "No se puedo obtener el texto de la peticion" }), 404
     
     try:
-        respuesta_geminai = handel_text(texto)
+        respuesta_geminai = handel_text(texto, user)
         if not respuesta_geminai:
             raise ValueError("Error generando el texto con GeminiAI")
         
@@ -163,7 +166,7 @@ def get_historial():
     except Exception as e:
         return jsonify({'Error': str(e)}), 500
 
-def handel_text(texto):
+def handel_text(texto, user):
     response = model.generate_content(f"del siguiente texto califica la escritura, la gramatica y el sentido del mismo texto {texto}")
     return response.text
     
@@ -201,6 +204,39 @@ def verificar_token(token):
     except Exception as e:
         print(f"Error verificando token: {str(e)}")
         return None
+
+@app.route('/file', methods=['POST'])
+def process_base64_pdf():
+    # Obtén el contenido en base64 y el nombre del archivo del JSON
+    data = request.json.get('file')
+    filename = request.json.get('filename')
+    
+    if not data:
+        return jsonify({"error": "No se encontró el archivo en base64"}), 400
+    if not filename:
+        return jsonify({"error": "No se encontró el nombre del archivo"}), 400
+
+    # Decodifica el PDF base64
+    try:
+        pdf_data = base64.b64decode(data)
+        pdf_stream = BytesIO(pdf_data)
+
+        # Abre el PDF desde el flujo de bytes
+        pdf_document = fitz.open(stream=pdf_stream, filetype="pdf")
+        
+        # Imprime información del archivo en la consola
+        print(f"Nombre del archivo: {filename}")
+        print("Número de páginas:", pdf_document.page_count)
+        for i in range(pdf_document.page_count):
+            page = pdf_document[i]
+            print(f"Contenido de la página {i + 1}:\n", page.get_text())
+
+        pdf_document.close()
+        
+        return jsonify({"message": "PDF procesado correctamente"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
