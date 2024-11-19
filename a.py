@@ -58,6 +58,21 @@ def auth_login():
     except Exception as e:
         return jsonify({'Error': str(e)}), 500
 
+@app.route('/auth/verificar', methods=['POST'])
+def auth_verificar():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'Error': "No se proporcionó un token válido"}), 401
+
+    token = auth_header.split(" ")[1]  # Extraer el token después de 'Bearer'
+    
+    # Verificar si el usuario está autenticado
+    usuario = verificar_token(token)
+    if not usuario:
+        return jsonify({'Error': "Usuario no autenticado"}), 401
+
+    return jsonify({'200': 'verificado'}), 200
+    
 
 @app.route('/auth/singUp', methods=['POST'])
 def auth_sing_up():
