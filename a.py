@@ -58,6 +58,37 @@ def auth_login():
     except Exception as e:
         return jsonify({'Error': str(e)}), 500
 
+@app.route('/rubrica', methods=['POST'])
+def actualizar_rubrica():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'Error': "No se proporcionó un token válido"}), 401
+
+    token = auth_header.split(" ")[1]  # Extraer el token después de 'Bearer'
+    
+    # Verificar si el usuario está autenticado
+    usuario = verificar_token(token)
+    if not usuario:
+        return jsonify({'Error': "Usuario no autenticado"}), 401
+    
+    data = request.get_json()
+
+    texto = data.get('rubrica', '')
+
+    response = (
+        supabase.table("rubrica")
+        .update({
+            "rubtica": texto
+        })
+        .eq("user_id", usuario.user.id)  # Filtrar por user_id
+        .execute()
+    )
+    if not response:
+        raise ValueError("Error no se pudo registrar el dato")
+        
+    return jsonify({'Mensaje': 'Actualizada exitoso'}), 201
+
+
 @app.route('/auth/verificar', methods=['POST'])
 def auth_verificar():
     auth_header = request.headers.get('Authorization')
@@ -89,6 +120,19 @@ def auth_sing_up():
             'password': password,
         })
 
+        if response.user:
+            user_id = response.user.id  # Obtener el user_id del nuevo usuario
+            
+            # Insertar en la tabla rubrica
+            rubrica_response = (
+                supabase.table("rubrica")
+                .insert({
+                    "rubtica": "califica la escritura, la gramatica y el sentido",  # Valor por defecto o personalizado
+                    "user_id": user_id,           # Asociar con el nuevo user_id
+                })
+                .execute()
+            )
+
         if not response:
             raise ValueError(response)
 
@@ -117,7 +161,7 @@ def handel():
         return jsonify({'Respuesta': "No se puedo obtener el texto de la peticion" }), 404
     
     try:
-        respuesta_geminai = handel_text(texto, user)
+        respuesta_geminai = handel_text(texto, usuario)
         if not respuesta_geminai:
             raise ValueError("Error generando el texto con GeminiAI")
         
@@ -182,7 +226,16 @@ def get_historial():
         return jsonify({'Error': str(e)}), 500
 
 def handel_text(texto, user):
-    response = model.generate_content(f"del siguiente texto califica la escritura, la gramatica y el sentido del mismo texto {texto}")
+    response = (
+        supabase.table("rubrica")
+        .select("rubtica")  # Especificar que solo se desea obtener el campo "rubrica"
+        .eq("user_id", user.user.id)  # Filtrar por user_id
+        .single()  # Asegurarte de obtener un único registro si sabes que solo hay uno
+        .execute()
+    )
+    prompt = f"del siguiente texto {response.data["rubtica"]} del mismo texto {texto}"
+    print(prompt)
+    response = model.generate_content(prompt)
     return response.text
     
 def handel_audio(texto):
@@ -221,6 +274,7 @@ def verificar_token(token):
         return None
 
 @app.route('/file', methods=['POST'])
+
 def process_base64_pdf():
     # Obtén el contenido en base64 y el nombre del archivo del JSON
     data = request.json.get('file')
