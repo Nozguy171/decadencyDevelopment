@@ -274,7 +274,6 @@ def verificar_token(token):
         return None
 
 @app.route('/file', methods=['POST'])
-
 def process_base64_pdf():
     # Obtén el contenido en base64 y el nombre del archivo del JSON
     data = request.json.get('file')
@@ -300,6 +299,27 @@ def process_base64_pdf():
             page = pdf_document[i]
             print(f"Contenido de la página {i + 1}:\n", page.get_text())
 
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'Error': "No se proporcionó un token válido"}), 401
+
+        token = auth_header.split(" ")[1]  # Extraer el token después de 'Bearer'
+        
+        # Verificar si el usuario está autenticado
+        usuario = verificar_token(token)
+        if not usuario:
+            return jsonify({'Error': "Usuario no autenticado"}), 401
+        
+        response = (
+            supabase.table("rubrica")
+            .update({
+                "rubtica": page.get_text()
+            })
+            .eq("user_id", usuario.user.id)  # Filtrar por user_id
+            .execute()
+        )
+        if not response:
+            raise ValueError("Error no se pudo registrar el dato")
         pdf_document.close()
         
         return jsonify({"message": "PDF procesado correctamente"}), 200
